@@ -57,6 +57,10 @@
 
 <div align="center">
 
+**一份内容，多平台并行分发，各平台状态一目了然**
+
+![多平台发布记录：抖音、头条、知乎、小红书各自状态](docs/images/demo-still-record-detail.png)
+
 ![操作演示：选账号并给单个平台改文案](docs/images/demo-02-accounts.gif)
 
 </div>
