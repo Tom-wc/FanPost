@@ -6,6 +6,8 @@
 
 图文或视频写一次，自动填进抖音、快手、小红书、头条号、视频号、B 站、企鹅号、知乎、百家号、微博的官方创作者后台，公众号单独走官方接口。
 
+<sub>自媒体多平台一键发布 · 矩阵运营工具 · 一文多发 · 内容分发助手 · 新媒体管理</sub>
+
 [![下载](https://img.shields.io/github/v/release/Tom-wc/FanPost?label=下载安装包&style=for-the-badge&color=4f46e5)](https://github.com/Tom-wc/FanPost/releases/latest)
 [![平台](https://img.shields.io/badge/平台-Windows%2010%2F11-0078d4?style=for-the-badge&logo=windows)](https://github.com/Tom-wc/FanPost/releases/latest)
 [![技术栈](https://img.shields.io/badge/Electron%2039-React%2019-47848f?style=for-the-badge&logo=electron)](#-技术栈)
@@ -159,3 +161,7 @@ docs/                    使用教程和截图
 ## 📄 许可
 
 源代码供学习、研究和个人非商业使用，商用需书面许可，详见 **[LICENSE](LICENSE)**。第三方代码声明见 **[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES)**。
+
+---
+
+<sub>关键词：自媒体多平台发布 · 一键分发 · 一文多发 · 矩阵运营 · 内容分发 · 新媒体管理工具 · 抖音 · 快手 · 小红书 · 头条号 · 视频号 · 哔哩哔哩 · 企鹅号 · 知乎 · 百家号 · 微博 · 公众号 · 批量发布 · Electron 桌面应用</sub>
