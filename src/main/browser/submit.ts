@@ -53,7 +53,8 @@ async function uncover(wc: WebContents, point: { x: number; y: number }, texts: 
   }
   return cover;
 }
-const CAPTCHA = /安全验证|请完成下方验证|拖动.{0,6}滑块|滑块验证|扫码验证/;
+const CAPTCHA = /安全验证|请完成下方验证|拖动.{0,6}滑块|滑块验证|扫码验证|请完成短信验证|短信验证码/;
+const VERIFY_LAYER = /verify|captcha/i;
 
 export async function autoSubmit(wc: WebContents, platform: Platform, type: ContentType): Promise<{ ok: boolean; reason: string; captcha?: boolean; settled?: boolean }> {
   const rule = submitRuleFor(platform, type);
@@ -69,6 +70,7 @@ export async function autoSubmit(wc: WebContents, platform: Platform, type: Cont
   await sleep(400);
   if (!pierced) {
     const cover = await uncover(wc, target, rule.texts);
+    if (VERIFY_LAYER.test(cover) || CAPTCHA.test(await wc.executeJavaScript(pageText).catch(() => ""))) return { ok: false, captcha: true, reason: "平台弹出了短信或安全验证，需要你本人完成" };
     if (cover) return { ok: false, reason: "「" + rule.texts[0] + "」按钮被页面上的弹层挡住了（" + cover + "），请关掉弹层后手动点发布" };
   }
   const fresh = pierced ? await pierceTarget(wc, rule.texts) : await wc.executeJavaScript(findTarget(rule.texts, rule.scope || "button")).catch(() => null);
