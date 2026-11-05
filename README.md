@@ -70,7 +70,7 @@
 ## 📥 下载安装
 
 1. 到 **[Releases](https://github.com/Tom-wc/FanPost/releases/latest)** 下载 `FanPost-Setup-x.y.z.exe`
-2. 双击安装（Windows 10 / 11）
+2. 双击安装（Windows 10 / 11，仅支持 64 位系统）
 3. 打开后在 **设置 → 授权** 里激活卡密
 
 ---
