@@ -6,6 +6,8 @@ import { HISTORY_OPTIONS } from "../../shared/history";
 import { LicensePanel } from "./LicensePanel";
 import { MpPanel } from "./MpPanel";
 import { IpPanel } from "./IpPanel";
+import { HelpLink } from "./Tutorial";
+import type { TutorialTopic } from "../../shared/tutorial";
 import type { LeaveGuard } from "./PublishComposer";
 
 function formatBytes(n: number) {
@@ -14,10 +16,10 @@ function formatBytes(n: number) {
   return Math.round(n / 1024) + " KB";
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, help, children }: { title: string; help?: TutorialTopic; children: ReactNode }) {
   return (
     <section className="settings-card panel">
-      <h3>{title}</h3>
+      <h3>{title}{help && <HelpLink topic={help} label="" />}</h3>
       <div className="settings-form">{children}</div>
     </section>
   );
@@ -83,7 +85,7 @@ export function SettingsPage({ data, setData, guard }: { data: AppData; setData:
   return (
     <div className={"settings-page" + (dirty ? " dirty" : "")}>
       <div className="settings-col">
-        <Section title="发布">
+        <Section title="发布" help="settings">
           <label className="setting-row">
             <span>
               <b>图文同时填写</b>
@@ -114,7 +116,7 @@ export function SettingsPage({ data, setData, guard }: { data: AppData; setData:
             恢复默认（图文 {DEFAULT_SETTINGS.imageConcurrency} 个、视频 {DEFAULT_SETTINGS.videoConcurrency} 个同时填写，同平台错开 {DEFAULT_SETTINGS.samePlatformGapMin} 分钟）
           </button>
         </Section>
-        <Section title="提醒">
+        <Section title="提醒" help="notify">
           <label className="setting-row">
             <span>
               <b>系统通知</b>
@@ -160,10 +162,10 @@ export function SettingsPage({ data, setData, guard }: { data: AppData; setData:
         </Section>
       </div>
       <div className="settings-col">
-        <Section title="授权">
+        <Section title="授权" help="license">
           <LicensePanel />
         </Section>
-        <Section title="公众号">
+        <Section title="公众号" help="mp">
           <MpPanel />
         </Section>
         <Section title="本机 IP">

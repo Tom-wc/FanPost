@@ -39,6 +39,8 @@ import { ImportModal } from "./ImportModal";
 import { MpPage } from "./MpPage";
 import { AboutPage } from "./AboutPage";
 import { NoticeBar, PromoSlotView, useAppInfo } from "./Promo";
+import { HelpLink, TutorialHost } from "./Tutorial";
+import type { TutorialTopic } from "../../shared/tutorial";
 import { THEMES, antTheme, applyCssVars, findTheme, loadThemeId, saveThemeId, type ThemeId } from "./theme";
 const brandUrl = new URL("./assets/brand.png", import.meta.url).href;
 
@@ -58,6 +60,7 @@ const NAV: Array<{ key: Page; label: string; icon: React.ReactNode }> = [
   { key: "video", label: "视频", icon: <PlaySquareOutlined /> },
   { key: "mp", label: "公众号", icon: <WechatOutlined /> },
 ];
+const PAGE_HELP: Record<Page, TutorialTopic> = { accounts: "accounts", image: "compose", video: "compose", mp: "mp", settings: "settings", about: "start" };
 const PAGE_TITLE: Record<Page, { eyebrow: string; title: string }> = {
   accounts: { eyebrow: "ACCOUNTS", title: "账号工作台" },
   image: { eyebrow: "IMAGE · TEXT", title: "图文一键分发" },
@@ -279,6 +282,7 @@ function Main({ themeId, setThemeId }: { themeId: ThemeId; setThemeId: (id: Them
           <div className="masthead-title">
             <span className="eyebrow">{head.eyebrow}</span>
             <h1>{head.title}</h1>
+            <HelpLink topic={PAGE_HELP[page]} label="本页教程" />
           </div>
           <BatchControl data={data} onOverlay={overlay} />
           <div className="stats">
@@ -399,6 +403,7 @@ function Main({ themeId, setThemeId }: { themeId: ThemeId; setThemeId: (id: Them
         </div>
       </main>
       <UpgradeModal />
+      <TutorialHost onOverlay={overlay("tutorial")} />
       {leave.modal}
       <NotificationCenter open={notifyOpen} onClose={() => setNotifyOpen(false)} data={data} setData={setData} onShowAccount={showAccount} onOpenTask={openTask} onOpenTasks={openTasks} />
       <Modal

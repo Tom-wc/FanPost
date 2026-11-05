@@ -8,6 +8,7 @@ import { RULES_MISSING, mpDeclaration, reviewMp } from "../../shared/safety-revi
 import { MpRichEditor } from "./MpRichEditor";
 import { htmlFromText, pathFromSrc } from "../../shared/mp-html";
 import { useSafetyRules, safetyReason } from "./safety";
+import { HelpLink } from "./Tutorial";
 import { ensureLicensed, handleQuota } from "./LicensePanel";
 
 const errText = (e: unknown) => safetyReason(e) || String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(/^QUOTA:/, "");
@@ -92,9 +93,7 @@ export function MpEditor({ initial, draft, setData, onSaved }: Props) {
   const copy = async () => {
     if (!(await ensureLicensed())) return;
     if (safety.loaded && !safety.rules) return message.error(RULES_MISSING);
-    const hard = safetyItems.filter((i) => i.level === "block");
-    if (hard.length) return Modal.error({ title: "安全检查没通过", content: <ul className="confirm-issues">{hard.map((i, n) => <li key={n}>{i.text}</li>)}</ul>, okText: "回去修改" });
-    void (async () => {
+    const run = () => void (async () => {
       setBusy("copy");
       try {
         const r = await window.fanpost.mpCopy(a);
@@ -105,6 +104,9 @@ export function MpEditor({ initial, draft, setData, onSaved }: Props) {
         setBusy("");
       }
     })();
+    const notes = safetyItems.filter((i) => i.kind === "word");
+    if (!notes.length) return run();
+    Modal.confirm({ title: notes.length + " 处敏感词提醒", content: <ul className="confirm-issues">{notes.map((i, n) => <li key={n}>{i.text}</li>)}</ul>, okText: "我已确认，继续复制", cancelText: "回去修改", onOk: run });
   };
   const pickCover = async () => {
     const [p] = await window.fanpost.pickFiles("cover");
@@ -162,6 +164,7 @@ export function MpEditor({ initial, draft, setData, onSaved }: Props) {
               <h3>发到公众号</h3>
               <p className="muted">{appId ? "已连接 " + appId : "还没填 AppID，只能复制"}</p>
             </div>
+            <HelpLink topic="mp" label="" />
           </header>
           <div className="mp-cover">
             {coverPreview || a.images[0] ? <Image src={coverPreview || undefined} width={96} height={41} preview={!!coverPreview} fallback="" /> : <span className="mp-cover-empty"><PictureOutlined /></span>}

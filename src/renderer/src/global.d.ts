@@ -57,6 +57,7 @@ declare global {
       refreshLicense(): Promise<LicenseView>;
       unbindLicense(): Promise<LicenseView>;
       getAppInfo(force?: boolean): Promise<AppInfoView>;
+      getTutorial(): Promise<string>;
       openAppLink(key: AppLinkKey): Promise<void>;
       openUrl(url: string): Promise<void>;
       removeHistory(draftIds: string[]): Promise<{ removed: number; data: AppData }>;

@@ -17,3 +17,9 @@ cover-test/
 Thumbs.db
 .e2e-backup/
 .demo-*.mjs
+*.pem
+*.key
+*-token.txt
+admin-token.txt
+sync-token.txt
+secrets/

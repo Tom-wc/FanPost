@@ -69,9 +69,9 @@ export interface MpReviewInput {
 
 export function reviewMp(rules: SafetyRules, input: MpReviewInput): SafetyItem[] {
   const words: SafetyItem[] = checkWords(rules, [{ platform: "weixin", title: input.title, description: input.description, topics: [] }]).map((h) => ({
-    level: h.level,
+    level: "warn",
     kind: "word",
-    text: "公众号" + FIELD_LABELS[h.field] + "含「" + h.word + "」（" + h.category + "）" + (h.hint ? "：" + h.hint : ""),
+    text: "公众号" + FIELD_LABELS[h.field] + "含「" + h.word + "」（" + h.category + "）" + (h.hint ? "：" + h.hint : "") + (h.level === "block" ? "，发表时可能被微信拦截或限流，建议改掉" : ""),
   }));
   const copy = copyItems(rules, { draft: { type: "image_text", title: input.title, description: input.description, topics: [], declaration: input.declaration, original: input.original, accountIds: [] }, accounts: [], log: [], source: input.source, now: 0, mp: true });
   return [...words, ...copy.map((i) => (i.level === "block" ? { ...i, level: "warn" as const, text: i.text.replace(/。?请改写，或.*$/, "，建议改写；转载请打开「内容为转载」并填原文链接") } : i))];

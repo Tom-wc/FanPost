@@ -44,6 +44,7 @@ import { registerGrabIpc } from "./grab/ipc";
 import { lookupIp } from "./public-ip";
 import { checkMpHealth } from "./grab/wechat";
 import { FP_SCHEME, pathFromSrc } from "../shared/mp-html";
+import { registerTutorial, tutorialPrivileges } from "./tutorial";
 import { MP_HEALTH_FIRST_DELAY_MS, MP_HEALTH_INTERVAL_MS, healthNotice, type MpHealthState, type MpHealthView } from "../shared/mp-health";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 import type {
@@ -951,9 +952,9 @@ else
       win.focus();
     }
   });
-protocol.registerSchemesAsPrivileged([{ scheme: FP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([{ scheme: FP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }, tutorialPrivileges]);
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(process.platform === "darwin" ? Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }]) : null);
   await sealOldLog().catch(() => undefined);
   const recovery = await store.load();
   await sealPlainFiles().catch((e) => writeBrowserLog("seal-files-failed " + String(e)));
@@ -970,6 +971,7 @@ app.whenReady().then(async () => {
   await pruneHistory();
   await license.init();
   registerImageProtocol();
+  registerTutorial();
   ipc();
   await createWindow();
   const refreshAll = async () => {

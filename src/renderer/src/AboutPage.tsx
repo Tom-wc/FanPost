@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { Button, Image, Typography, message } from "antd";
 import { publishAppInfo, useAppInfo, PromoSlotView } from "./Promo";
+import { openTutorial } from "./Tutorial";
+import { TUTORIAL_SECTIONS, type TutorialTopic } from "../../shared/tutorial";
+
+const GUIDE: TutorialTopic[] = ["start", "accounts", "compose", "launch", "records", "mp", "settings", "license", "safety", "verify", "lookup", "faq"];
 
 const supportQr = new URL("./assets/support-qr.png", import.meta.url).href;
 const brandUrl = new URL("./assets/brand.png", import.meta.url).href;
@@ -71,7 +75,11 @@ export function AboutPage() {
         <section className="panel about-text">
           <h3>软件说明</h3>
           <ol>{FEATURES.map((t) => <li key={t}>{t}</li>)}</ol>
-          <p className="muted">详细用法见安装包里的《使用教程》，或在设置页各项旁边的说明。</p>
+        </section>
+        <section className="panel about-text about-guide">
+          <h3>使用教程 <Button size="small" type="primary" onClick={() => openTutorial()}>打开完整教程</Button></h3>
+          <div className="guide-grid">{GUIDE.map((t) => <button key={t} onClick={() => openTutorial(t)}>{TUTORIAL_SECTIONS[t]}</button>)}</div>
+          <p className="muted">各功能页标题旁的「本页教程」和问号图标，会直接打开对应章节。</p>
         </section>
         <section className="panel about-text">
           <h3>免责声明</h3>

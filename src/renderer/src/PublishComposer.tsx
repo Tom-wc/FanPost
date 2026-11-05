@@ -14,6 +14,7 @@ import { MediaPicker, fileName } from "./MediaPicker";
 import { ContentFields, PlatformTab, RuleStrip, effective, type CommonContent, type OverrideState } from "./PlatformEditor";
 import { RULES_MISSING, reviewSafety } from "../../shared/safety-review";
 import { useSafetyRules, safetyReason } from "./safety";
+import { HelpLink } from "./Tutorial";
 
 const COVER_TIMEOUT_MS = 20000;
 const blankContent: CommonContent = { title: "", description: "", topics: [] };
@@ -430,6 +431,7 @@ export function PublishComposer({
               <h3>发布账号</h3>
               <p className="muted">记住上次的选择</p>
             </div>
+            <HelpLink topic="pick" label="" />
           </header>
           {usable.length === 0 ? (
             <Empty description={data.accounts.length ? "已添加的账号都不支持" + (isVideo ? "视频" : "图文") + "，请先到账号页添加" : "还没有账号，请先到账号页添加"} />
@@ -532,6 +534,7 @@ export function PublishComposer({
             <div>
               <h3>发布前检查</h3>
             </div>
+            <HelpLink topic="safety" label="" />
           </header>
           <ul className="check-list">
             <li className={media.length ? "ok" : "bad"}>{media.length ? (isVideo ? "已选视频" : "已选 " + media.length + " 张图") : "未添加素材"}</li>

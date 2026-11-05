@@ -81,6 +81,8 @@ const KEYS = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 },
 };
 
+const SELECT_ALL_MODIFIER = process.platform === "darwin" ? 4 : 2;
+
 export async function pressTab(wc: WebContents) {
   await cdp(wc, "Input.dispatchKeyEvent", { type: "keyDown", ...KEYS.Tab });
   await cdp(wc, "Input.dispatchKeyEvent", { type: "keyUp", ...KEYS.Tab });
@@ -117,10 +119,10 @@ const CLEAR_FIELD =
 export async function typeInto(wc: WebContents, backendNodeId: number, text: string, options: { clear?: boolean; tab?: boolean } = {}) {
   if (options.clear) await callOnNode(wc, backendNodeId, CLEAR_FIELD);
   await cdp(wc, "DOM.focus", { backendNodeId });
-  await cdp(wc, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...KEYS.a, modifiers: 2 });
+  await cdp(wc, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...KEYS.a, modifiers: SELECT_ALL_MODIFIER });
   await cdp(wc, "Input.dispatchKeyEvent", { type: "rawKeyDown", ...KEYS.Backspace });
   await cdp(wc, "Input.dispatchKeyEvent", { type: "keyUp", ...KEYS.Backspace });
-  await cdp(wc, "Input.dispatchKeyEvent", { type: "keyUp", ...KEYS.a, modifiers: 2 });
+  await cdp(wc, "Input.dispatchKeyEvent", { type: "keyUp", ...KEYS.a, modifiers: SELECT_ALL_MODIFIER });
   await cdp(wc, "Input.insertText", { text });
   if (options.tab !== false) await pressTab(wc);
   await sleep(700);

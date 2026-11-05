@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld("fanpost", {
   refreshLicense: () => ipcRenderer.invoke("license:refresh"),
   unbindLicense: () => ipcRenderer.invoke("license:unbind"),
   getAppInfo: (force?: boolean) => ipcRenderer.invoke("app:info", force === true),
+  getTutorial: () => ipcRenderer.invoke("tutorial:get"),
   openAppLink: (key: string) => ipcRenderer.invoke("app:open-link", key),
   openUrl: (url: string) => ipcRenderer.invoke("app:open-url", url),
   removeHistory: (draftIds: string[]) => ipcRenderer.invoke("history:remove", draftIds),
