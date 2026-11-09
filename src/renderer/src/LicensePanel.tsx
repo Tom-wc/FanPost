@@ -35,6 +35,7 @@ export function handleQuota(e: unknown) {
 }
 
 const DAY_MS = 86400000;
+const HOUR_MS = 3600000;
 const TRIAL_EXPIRED = "体验已到期，暂时不能使用。购买正式版卡密后在下面输入，点「激活」即可继续，账号和发布记录都还在。";
 const YEAR_EXPIRED = "年卡已到期，暂时不能使用。购买新卡密后在下面输入，点「激活」即可续用，账号和发布记录都还在。";
 
@@ -79,7 +80,9 @@ export function LicensePanel({ onChanged }: { onChanged?: (v: LicenseView) => vo
   const timed = !!view.expiresAt && !isPermanent(view.expiresAt);
   const trial = timed && view.term !== "year";
   const year = timed && view.term === "year";
-  const left = timed ? Math.max(0, Math.ceil((Date.parse(view.expiresAt!) - Date.now()) / DAY_MS)) : 0;
+  const ms = timed ? Math.max(0, Date.parse(view.expiresAt!) - Date.now()) : 0;
+  const left = Math.ceil(ms / DAY_MS);
+  const leftText = trial && ms <= DAY_MS ? "还剩 " + Math.max(1, Math.ceil(ms / HOUR_MS)) + " 小时" : "还剩 " + left + " 天";
   const reason = view.reason === "expired" && timed ? (year ? YEAR_EXPIRED : TRIAL_EXPIRED) : view.reason && REASON_TEXT[view.reason];
   const activate = () => void act("activate", () => window.fanpost.activateLicense(key), paid ? "已更换卡密" : "激活成功");
   return (
@@ -87,8 +90,8 @@ export function LicensePanel({ onChanged }: { onChanged?: (v: LicenseView) => vo
       <div className="license-head">
         <b>{paid && trial ? "体验版" : TIER_LABELS[view.tier] + (paid && year ? "（年卡）" : "")}</b>
         <span>{paid ? "每个平台最多 " + view.limit + " 个账号" : "激活卡密后才能添加账号、填写和发布"}</span>
-        {paid && <Tag color={view.reason ? "error" : trial || (year && left <= 30) ? "warning" : "success"}>{view.reason ? "暂不可用" : timed ? "还剩 " + left + " 天" : "已激活"}</Tag>}
-        {paid && timed && <span>到期 {view.expiresAt!.slice(0, 10)}</span>}
+        {paid && <Tag color={view.reason ? "error" : trial || (year && left <= 30) ? "warning" : "success"}>{view.reason ? "暂不可用" : timed ? leftText : "已激活"}</Tag>}
+        {paid && timed && <span>到期 {trial ? new Date(view.expiresAt!).toLocaleString("zh-CN", { hour12: false }).slice(0, -3) : view.expiresAt!.slice(0, 10)}</span>}
       </div>
       {reason && <Alert type="warning" showIcon message={reason} />}
       {view.over.length > 0 && (
