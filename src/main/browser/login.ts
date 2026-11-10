@@ -23,6 +23,17 @@ const KUAISHOU_NAME =
 type PageState = { verdict: PageVerdict; name: string };
 export type LoginResult = { loggedIn: boolean; name: string; reason: string };
 
+const LOGIN_PREP: Partial<Record<Platform, string>> = {
+  qqmedia:
+    "(()=>{if(window.__fpLoginPrep)return;window.__fpLoginPrep=1;let n=0;const t=setInterval(()=>{if(++n>20||!/om\\.qq\\.com/.test(location.host)){clearInterval(t);window.__fpLoginPrep=0;return}const c=document.querySelector('input.lv2-agreement-checkbox,.lv2-agreement input[type=checkbox]');if(c){if(!c.checked)(c.closest('label')||c).click();clearInterval(t);window.__fpLoginPrep=0}},300)})()",
+};
+
+export async function prepareLoginPage(platform: Platform, wc: WebContents): Promise<void> {
+  const script = LOGIN_PREP[platform];
+  if (!script) return;
+  await wc.executeJavaScript(script).catch(() => undefined);
+}
+
 async function readPage(account: Account, wc: WebContents): Promise<PageState> {
   const url = wc.getURL();
   try {

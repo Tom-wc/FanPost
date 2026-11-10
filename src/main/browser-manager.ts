@@ -16,7 +16,7 @@ import {
   type PublishProgress,
   type PublishResult,
 } from "./browser/common";
-import { settleLogin } from "./browser/login";
+import { prepareLoginPage, settleLogin } from "./browser/login";
 import { verifyPublishedTitle, type VerifyResult } from "./browser/verify";
 import { assistedMessage, healZhihuImages, publishArticle } from "./browser/article";
 import { flows } from "./flow-runtime";
@@ -223,7 +223,10 @@ export class BrowserManager {
       void writeBrowserLog(`block-external-nav account=${account.id} url=${url}`);
     };
     wc.on("will-navigate", blockExternalNav);
-    wc.on("dom-ready", () => this.refitSoon(view, true));
+    wc.on("dom-ready", () => {
+      this.refitSoon(view, true);
+      void prepareLoginPage(account.platform, wc);
+    });
     wc.on("did-navigate-in-page", () => this.refitSoon(view));
     wc.on("will-redirect", blockExternalNav);
     const inspect = () => this.scheduleInspect(account, view);

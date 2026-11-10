@@ -1,6 +1,6 @@
 {
   "name": "fanpost",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "浪叉多平台发布助手：一份内容一键填写、发布到多个自媒体平台",
   "main": "dist-electron/main/index.js",
   "author": "Jackie",
