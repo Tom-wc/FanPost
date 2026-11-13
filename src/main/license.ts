@@ -34,6 +34,10 @@ export class LicenseManager {
     return closedFeature();
   }
 
+  async activateAddon(_input: string): Promise<LicenseState> {
+    return closedFeature();
+  }
+
   async refresh(_force = false): Promise<LicenseState> {
     return NO_LICENSE;
   }

@@ -46,6 +46,8 @@ export interface PublishDraft {
   accountIds: string[];
   overrides?: ContentOverrides;
   autoSubmit?: boolean;
+  scheduledAt?: string;
+  scheduleQueuedAt?: string;
   question?: string;
   declaration?: Declaration;
   original?: boolean;
@@ -77,6 +79,7 @@ export interface SavedDraft {
   declaration?: Declaration;
   original?: boolean;
   source?: ContentSource;
+  scheduledAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -93,7 +96,17 @@ export interface PublishTask {
   openedAt?: string;
   createdAt: string;
   updatedAt: string;
+  failure?: TaskFailure;
 }
+export interface TaskFailure {
+  bucket: FailureBucket;
+  reason: string;
+  detail: string;
+  at: string;
+  retried: number;
+  gaveUp?: boolean;
+}
+export type FailureBucket = "login" | "captcha" | "not_found" | "timeout" | "unconfirmed" | "quota" | "network" | "input" | "other";
 export interface AppData {
   accounts: Account[];
   drafts: PublishDraft[];

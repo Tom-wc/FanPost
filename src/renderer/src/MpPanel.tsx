@@ -43,10 +43,12 @@ export function MpPanel() {
     setBusy(true);
     try {
       const r = await window.fanpost.saveMp(appId, secret);
-      message.success(saved && saved !== r.appId ? "已换成 " + r.appId + "，旧的已覆盖" : "已连上公众号并保存");
       setSaved(r.appId);
+      if (r.health) setHealth(r.health);
       reset();
-      void window.fanpost.getMp().then((x) => setHealth(x.health));
+      if (!r.health || r.health.state === "ok") message.success(saved && saved !== r.appId ? "已换成 " + r.appId + "，旧的已覆盖" : "已保存，接口正常");
+      else if (r.health.state === "unset") message.success("已保存");
+      else message.warning("已保存，接口暂时连不上（见下方提示）");
     } catch (e) {
       if (!handleQuota(e)) message.error(errText(e));
     } finally {
@@ -75,18 +77,29 @@ export function MpPanel() {
       {saved && health && health.state !== "unset" && (
         <div className="mp-health muted">上次检测 {new Date(health.checkedAt).toLocaleString("zh-CN")}，软件每 6 小时自动检测一次，失效会在通知中心提醒</div>
       )}
-      {saved && health && (health.state === "failed" || health.state === "offline") && <Alert type={health.state === "failed" ? "error" : "warning"} showIcon message={health.message} />}
+      {saved && health && (health.state === "failed" || health.state === "offline") && (
+        <Alert
+          type={health.state === "failed" ? "error" : "warning"}
+          showIcon
+          message={health.message}
+          description={
+            health.code === 40164 || health.code === 61004
+              ? "家宽的公网 IP 一般几天变一次，变了这里就会连不上。到公众号后台把新 IP 加进白名单，回来点「检测接口」即可，AppID 和 AppSecret 不用重填。"
+              : undefined
+          }
+        />
+      )}
       <div className="mp-cred">
         <Input placeholder={saved ? "新 AppID（覆盖 " + saved + "）" : "AppID（wx 开头）"} value={appId} onChange={(e) => setAppId(e.target.value)} allowClear />
         <Input.Password placeholder="AppSecret" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="off" />
       </div>
       <div className="mp-actions">
         <Button type="primary" loading={busy} disabled={!appId.trim() || !secret.trim()} onClick={() => void save()}>
-          {saved ? "测试并覆盖" : "测试并保存"}
+          保存并检测
         </Button>
         {(appId || secret) && <Button onClick={reset}>清空输入</Button>}
       </div>
-      <p className="muted">在公众号后台「设置与开发 → 基本配置」里拿 AppID 和 AppSecret，并把下面「本机 IP」里的公网 IP 加进「IP 白名单」。需要认证过的公众号。测试通过才会保存，AppSecret 加密存在本机，不上传。</p>
+      <p className="muted">在公众号后台「设置与开发 → 基本配置」里拿 AppID 和 AppSecret，并把下面「本机 IP」里的公网 IP 加进「IP 白名单」。需要认证过的公众号。保存时会顺手检测一次，<b>连不上也照样保存</b>：家宽 IP 变了只要去后台更新白名单，回来点「检测接口」，不用重新填。AppSecret 加密存在本机，不上传。</p>
     </div>
   );
 }

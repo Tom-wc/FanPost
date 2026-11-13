@@ -350,6 +350,25 @@ export class BrowserManager {
     await this.ensureView(account).webContents.loadURL(url).catch(ignoreAborted).catch(() => undefined);
   }
 
+  /** 用账号自己的登录态开一个隐藏页面跑只读脚本（评论抓取等），跑完立刻销毁，不打扰用户正在看的窗口。 */
+  async withHiddenPage<T>(account: Account, run: (wc: Electron.WebContents) => Promise<T>): Promise<T> {
+    const hidden = this.hiddenWindow(account);
+    try {
+      return await run(hidden.webContents);
+    } finally {
+      await this.flushAccountSession(account.id, "hidden-page");
+      if (!hidden.isDestroyed()) hidden.destroy();
+    }
+  }
+
+  /** 在账号自己的可见视图里打开指定页面并执行脚本（用于把回复填进输入框，最后由人点发送）。 */
+  async withAccountPage<T>(account: Account, url: string | undefined, run: (wc: Electron.WebContents) => Promise<T>): Promise<T> {
+    const view = this.ensureView(account);
+    if (this.active === account.id) this.attachActive(view);
+    if (url && view.webContents.getURL() !== url) await view.webContents.loadURL(url).catch(ignoreAborted).catch(() => undefined);
+    return run(view.webContents);
+  }
+
   reportLogin(accountId: string, loginStatus: LoginStatus) {
     return this.updateAccount(accountId, { loginStatus });
   }

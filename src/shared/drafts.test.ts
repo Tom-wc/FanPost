@@ -48,3 +48,9 @@ test("draft label falls back to body text then a placeholder", () => {
   assert.equal(draftLabel({ title: "", description: "这是一段很长很长很长很长很长很长的正文内容" }), "这是一段很长很长很长很长很长很长的正文内");
   assert.equal(draftLabel({ title: "", description: "" }), "未命名草稿");
 });
+
+test("分平台的单独封面随草稿保存，重新打开不丢", () => {
+  const input = parseDraftInput({ type: "image_text", title: "t", description: "d", topics: [], mediaPaths: [], accountIds: [], overrides: { xiaohongshu: { enabled: true, description: "小红书", coverPath: "C:/a/xhs.jpg" } } });
+  assert.equal(input?.overrides.xiaohongshu?.coverPath, "C:/a/xhs.jpg");
+  assert.equal(input?.overrides.xiaohongshu?.description, "小红书");
+});

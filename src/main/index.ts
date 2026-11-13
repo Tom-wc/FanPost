@@ -17,6 +17,8 @@ import { readBrowserLog, sealOldLog, writeBrowserLog } from "./log-bus";
 import { sealPlainFiles } from "./seal-files";
 import { PublishControl } from "./publish-control";
 import { runScheduled, type WaitReason } from "./publish-scheduler";
+import { SCHEDULE_CHECK_MS, isScheduled, missedSchedules, nextDueDraft, scheduledAtOf, upcomingSchedules } from "../shared/schedule";
+import { classifyFailure, isRetryable, RETRY_DELAY_MS } from "../shared/failure";
 import {
   LOGIN_PATROL_ACCOUNT_GAP_MS,
   LOGIN_PATROL_FIRST_DELAY_MS,
@@ -34,13 +36,15 @@ import { browserCacheBytes, clearBrowserCache } from "./browser-cache";
 import { LicenseManager } from "./license";
 import { APP_LINK_KEYS, appInfoView, type AppLinkKey } from "../shared/app-info";
 import { DEFAULT_PROMOS } from "../shared/promo";
-import { QUOTA_ERROR, TIER_LABELS, canAddAccount, quotaOverflow } from "../shared/license";
+import { FEATURE_ERROR, FEATURE_LABELS, QUOTA_ERROR, TIER_LABELS, canAddAccount, hasFeature, quotaOverflow, type LicenseFeature } from "../shared/license";
 import { RULES_MISSING, SAFETY_ERROR, reviewSafety } from "../shared/safety-review";
 import { PACK_MISSING } from "../shared/platform-pack";
 import { currentPack } from "./platform-pack";
 import { effectiveGapMin, pruneLog } from "../shared/pacing";
 import { parseSource } from "../shared/copy-check";
 import { registerGrabIpc } from "./grab/ipc";
+import { registerAi } from "./ai";
+import { registerLeads } from "./leads";
 import { lookupIp } from "./public-ip";
 import { checkMpHealth } from "./grab/wechat";
 import { FP_SCHEME, pathFromSrc } from "../shared/mp-html";
@@ -121,6 +125,7 @@ const notifier = new Notifier(store, () => win);
 let patrolTimer: ReturnType<typeof setTimeout> | undefined;
 let patrolRunning = false;
 let publishRunning = false;
+let scheduleTickImpl: (() => Promise<unknown>) | undefined;
 let runningDraftId: string | undefined;
 const publishControl = new PublishControl((state) => win?.webContents.send("publish:state", state));
 async function dropDrafts(draftIds: string[]) {
@@ -474,34 +479,57 @@ function ipc() {
   );
   const licenseView = () => ({ ...license.current(), machine: license.machineCode(), over: quotaOverflow(store.get().accounts, license.current().limit) });
   ipcMain.handle("license:get", () => licenseView());
+  const licenseChanged = () => {
+    const view = licenseView();
+    win?.webContents.send("license:changed", view);
+    return view;
+  };
+  const assertFeature = (feature: LicenseFeature) => {
+    if (!hasFeature(license.current(), feature)) throw new Error(FEATURE_ERROR + "「" + FEATURE_LABELS[feature] + "」是扩展功能，需要先在 设置 → 功能设置 → 扩展功能 里激活。");
+  };
   registerGrabIpc({
     win: () => win,
     getData: () => store.get(),
     update: (fn) => store.update(fn),
     rules: () => license.safetyRules(),
     onHealth: (h) => void onMpHealth(h),
+    assertFeature,
     assertLicensed: () => {
       if (license.current().tier === "none") throw new Error(QUOTA_ERROR + "还没有激活授权。激活卡密后才能使用全部功能（添加账号、一键填写和发布、公众号、采集导入）。");
     },
   });
   if (!app.isPackaged) ipcMain.handle("dev:log", (_e, n: unknown) => readBrowserLog(typeof n === "number" ? n : 200));
   ipcMain.handle("net:ip", (_e, force: unknown) => lookupIp(force === true));
+  registerAi(() => win ?? undefined);
+  registerLeads({
+    getWindow: () => win ?? undefined,
+    getData: () => store.get(),
+    browsers: () => browsers ?? undefined,
+    assertLicensed: () => {
+      if (license.current().tier === "none") throw new Error(QUOTA_ERROR + "还没有激活授权。激活卡密后才能使用全部功能（添加账号、一键填写和发布、公众号、采集导入）。");
+    },
+  });
   ipcMain.handle("safety:rules", () => ({ rules: license.safetyRules() ?? null, ...license.rulesInfo() }));
   ipcMain.handle("license:activate", async (_e, key: unknown) => {
     if (typeof key !== "string") throw new Error("卡密格式不对");
     await license.activate(key);
     await license.refreshRules(true);
-    return licenseView();
+    return licenseChanged();
+  });
+  ipcMain.handle("license:addon", async (_e, key: unknown) => {
+    if (typeof key !== "string") throw new Error("插件卡密格式不对");
+    await license.activateAddon(key);
+    return licenseChanged();
   });
   ipcMain.handle("license:refresh", async () => {
     await license.refresh(true);
     await license.refreshRules(true);
-    return licenseView();
+    return licenseChanged();
   });
   ipcMain.handle("license:unbind", async () => {
     if (publishControl.current !== "idle") throw new Error("正在填写或发布，等这一批结束后再解绑");
     await license.unbind();
-    return licenseView();
+    return licenseChanged();
   });
   ipcMain.handle("app:info", async (_e, force: unknown) => appInfoView(app.getVersion(), await license.appInfo(force === true)));
   ipcMain.handle("app:open-link", async (_e, key: unknown) => {
@@ -665,14 +693,16 @@ function ipc() {
       });
     },
   );
-  ipcMain.handle("publish:auto", async (_e, draftId: string) => {
+  const startPublish = async (draftId: string) => {
     const draft = store.get().drafts.find((x) => x.id === draftId);
     if (!draft) throw new Error("发布内容不存在");
     assertQuota();
     if (!license.safetyRules()) throw new Error(SAFETY_ERROR + RULES_MISSING);
     if (!currentPack()) throw new Error(SAFETY_ERROR + PACK_MISSING);
-    if (publishRunning)
+    if (publishRunning) {
+      if (draft.scheduledAt) return undefined;
       throw new Error("已有一批发布任务在进行中，请等这一批填写完成后再开始下一批（视频和图文分批进行）。");
+    }
     publishRunning = true;
     runningDraftId = draft.id;
     publishControl.start();
@@ -691,8 +721,94 @@ function ipc() {
         win?.webContents.send("data:changed");
       }
     }
+    startRetryTimer(draft.id);
     await pruneHistory();
     return store.get();
+  };
+  ipcMain.handle("publish:auto", async (_e, draftId: string) => {
+    const result = await startPublish(String(draftId));
+    return result ?? store.get();
+  });
+  const scheduleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const startRetryTimer = (draftId: string) => {
+    const count = store.get().tasks.filter((t) => t.draftId === draftId && isRetryable(t)).length;
+    if (!count) return;
+    clearTimeout(retryTimers.get(draftId));
+    retryTimers.set(
+      draftId,
+      setTimeout(async () => {
+        retryTimers.delete(draftId);
+        const n = await retryFailedTasks(draftId);
+        if (!n) return;
+        await writeBrowserLog("retry-start draft=" + draftId + " tasks=" + n);
+        await startPublish(draftId).catch((e) => writeBrowserLog("retry-error " + String(e).slice(0, 160)));
+      }, RETRY_DELAY_MS),
+    );
+  };
+
+  let scheduleScanBusy = false;
+  const scheduleTick = async () => {
+    if (scheduleScanBusy || publishRunning) return;
+    scheduleScanBusy = true;
+    try {
+      const data = store.get();
+      const due = nextDueDraft(data.drafts, data.tasks, Date.now());
+      if (!due) return;
+      const started = Date.now();
+      await store.update((d) => {
+        const x = d.drafts.find((y) => y.id === due.id);
+        if (x) x.scheduleQueuedAt = new Date(started).toISOString();
+      });
+      await writeBrowserLog("schedule-fire draft=" + due.id + " at=" + due.scheduledAt);
+      win?.webContents.send("data:changed");
+      const r = await startPublish(due.id).catch(async (e) => {
+        await writeBrowserLog("schedule-error " + String(e).slice(0, 160));
+        await notifier.notify({ level: "error", kind: "publish_failed", title: "定时发布没能开始：" + due.title, message: String(e instanceof Error ? e.message : e).slice(0, 200) });
+        return undefined;
+      });
+      win?.webContents.send("data:changed");
+      return r;
+    } finally {
+      scheduleScanBusy = false;
+    }
+  };
+
+  scheduleTickImpl = scheduleTick;
+  ipcMain.handle("publish:schedule", async (_e, draftId: unknown, raw: unknown) => {
+    const id = String(draftId || "");
+    const at = raw === null || raw === undefined || raw === "" ? undefined : scheduledAtOf(raw);
+    return store.update((d) => {
+      const draft = d.drafts.find((x) => x.id === id);
+      if (!draft) return;
+      if (at) draft.scheduledAt = at;
+      else {
+        delete draft.scheduledAt;
+        delete draft.scheduleQueuedAt;
+      }
+    });
+  });
+  ipcMain.handle("publish:upcoming", () => {
+    const data = store.get();
+    return { upcoming: upcomingSchedules(data.drafts, data.tasks, Date.now()).map((d) => ({ id: d.id, title: d.title, type: d.type, scheduledAt: d.scheduledAt! })) };
+  });
+  ipcMain.handle("publish:missed", () => {
+    const data = store.get();
+    return missedSchedules(data.drafts, data.tasks, Date.now());
+  });
+  ipcMain.handle("publish:run-now", async (_e, draftId: unknown) => {
+    const id = String(draftId || "");
+    await store.update((d) => {
+      const x = d.drafts.find((y) => y.id === id);
+      if (x) x.scheduledAt = new Date().toISOString();
+    });
+    return (await scheduleTick()) ?? store.get();
+  });
+  ipcMain.handle("publish:retry-failed", async (_e, draftId: unknown) => {
+    const id = String(draftId || "");
+    const n = await retryFailedTasks(id);
+    if (n) startPublish(id).catch((e) => writeBrowserLog("retry-manual-error " + String(e).slice(0, 160)));
+    return { retried: n };
   });
   ipcMain.handle("publish:state", () => publishControl.current);
   ipcMain.handle("publish:pause", () => publishControl.pause());
@@ -737,6 +853,26 @@ function ipc() {
     win?.webContents.send("data:changed");
     await notifyTask(task.id);
   }
+  async function recordFailure(taskId: string, extra: string[] = []) {
+    const current = store.get().tasks.find((x) => x.id === taskId);
+    if (!current) return;
+    if (current.status !== "failed" && !/未确认|没查到|暂未查到/.test(current.message || "")) return;
+    const got = classifyFailure([current.message || "", ...extra]);
+    const prev = current.failure;
+    await store.update((d) => {
+      const t = d.tasks.find((x) => x.id === taskId);
+      if (!t) return;
+      t.failure = {
+        bucket: got.bucket,
+        reason: got.reason,
+        detail: (current.message || "").slice(0, 600),
+        at: new Date().toISOString(),
+        retried: prev?.retried ?? 0,
+        ...(prev?.gaveUp ? { gaveUp: true } : {}),
+      };
+    });
+  }
+
   async function runPublishTask(task: PublishTask, draft: PublishDraft) {
     const account = store.get().accounts.find((x) => x.id === task.accountId);
     if (!account || !browsers) return;
@@ -778,8 +914,31 @@ function ipc() {
         }
       }
     }
-    if (!overdueTasks.has(task.id)) await notifyTask(task.id);
+    if (!overdueTasks.has(task.id)) {
+      await recordFailure(task.id);
+      await notifyTask(task.id);
+    }
   }
+
+  async function retryFailedTasks(draftId: string) {
+    const current = store.get().drafts.find((x) => x.id === draftId);
+    if (!current) return 0;
+    const retryable = store
+      .get()
+      .tasks.filter((t) => t.draftId === draftId && isRetryable(t))
+      .map((t) => t.id);
+    if (!retryable.length) return 0;
+    await store.update((d) => {
+      for (const t of d.tasks)
+        if (retryable.includes(t.id)) {
+          Object.assign(t, { status: "pending", message: "第一次没成功（" + (t.failure?.reason || "失败") + "），" + Math.round(RETRY_DELAY_MS / 60000) + " 分钟后自动重试一次", updatedAt: new Date().toISOString() });
+          if (t.failure) t.failure = { ...t.failure, retried: t.failure.retried + 1 };
+        }
+    });
+    win?.webContents.send("data:changed");
+    return retryable.length;
+  }
+
   async function saveTaskSnapshot(taskId: string, accountId: string) {
     const file = path.join(app.getPath("userData"), "task-artifacts", "snap-" + taskId + ".jpg");
     const saved = await browsers?.saveSnapshot(accountId, file).catch((error) => {
@@ -975,13 +1134,17 @@ app.whenReady().then(async () => {
   ipc();
   await createWindow();
   const refreshAll = async () => {
+    const before = JSON.stringify(license.current().features);
     await license.refresh();
     await license.refreshRules();
+    if (JSON.stringify(license.current().features) !== before) win?.webContents.send("license:changed", { ...license.current(), machine: license.machineCode(), over: quotaOverflow(store.get().accounts, license.current().limit) });
   };
   void refreshAll();
   void lookupIp();
   scheduleMpHealth(MP_HEALTH_FIRST_DELAY_MS);
   setInterval(() => void refreshAll(), LICENSE_TICK_MS);
+  setInterval(() => void scheduleTickImpl?.(), SCHEDULE_CHECK_MS);
+  setTimeout(() => void scheduleTickImpl?.(), 12000);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

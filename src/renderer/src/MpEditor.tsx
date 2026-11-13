@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Button, Image, Input, Modal, Switch, message } from "antd";
 import { CopyOutlined, PictureOutlined, SaveOutlined, WechatOutlined } from "@ant-design/icons";
 import type { AppData } from "../../shared/types";
@@ -10,6 +10,7 @@ import { htmlFromText, pathFromSrc } from "../../shared/mp-html";
 import { useSafetyRules, safetyReason } from "./safety";
 import { HelpLink } from "./Tutorial";
 import { ensureLicensed, handleQuota } from "./LicensePanel";
+import type { LeaveGuard } from "./PublishComposer";
 
 const errText = (e: unknown) => safetyReason(e) || String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(/^QUOTA:/, "");
 const count = (s: string) => Array.from(s.trim()).length;
@@ -28,11 +29,17 @@ interface Props {
   draft?: MpDraft;
   setData: (d: AppData) => void;
   onSaved: (id: string) => void;
+  guard?: RefObject<LeaveGuard | undefined>;
 }
 
-export function MpEditor({ initial, draft, setData, onSaved }: Props) {
+const MP_LEAVE_TEXT = { title: "文章还没保存，是否保存？", body: "不保存的话，这次改的标题、正文、封面和设置都会丢失。", save: "保存到本机" };
+const mpKey = (x: MpDraftInput) => JSON.stringify([x.title, x.author, x.digest, x.html, x.cover ?? "", x.sourceUrl, x.openComment, !!x.repost]);
+
+export function MpEditor({ initial, draft, setData, onSaved, guard }: Props) {
   const [a, setA] = useState<MpDraftInput>(() => (initial.html.trim() ? initial : { ...initial, html: htmlFromText(initial.text, initial.images) }));
   const [id, setId] = useState(draft?.id);
+  const [baseline, setBaseline] = useState(() => mpKey(a));
+  const dirty = mpKey(a) !== baseline && (!!id || !!a.title.trim() || !!a.text.trim());
   const [busy, setBusy] = useState("");
   const [step, setStep] = useState("");
   const [appId, setAppId] = useState("");
@@ -58,15 +65,31 @@ export function MpEditor({ initial, draft, setData, onSaved }: Props) {
     try {
       const r = await window.fanpost.mpStore(id, a);
       setId(r.id);
+      setBaseline(mpKey(a));
       setData(r.data);
       onSaved(r.id);
       message.success("已保存到本机");
+      return true;
     } catch (e) {
       if (!handleQuota(e)) message.error(errText(e));
+      return false;
     } finally {
       setBusy("");
     }
   };
+  const saveRef = useRef(saveLocal);
+  saveRef.current = saveLocal;
+  useEffect(() => {
+    if (!guard) return;
+    guard.current = { isDirty: () => dirty, save: () => saveRef.current(), text: MP_LEAVE_TEXT };
+    return () => {
+      guard.current = undefined;
+    };
+  });
+  useEffect(() => {
+    void window.fanpost.setDirty(dirty);
+  }, [dirty]);
+  useEffect(() => () => void window.fanpost.setDirty(false), []);
   const guarded = async (then: () => void) => {
     if (!(await ensureLicensed())) return;
     if (safety.loaded && !safety.rules) return message.error(RULES_MISSING);
@@ -80,6 +103,7 @@ export function MpEditor({ initial, draft, setData, onSaved }: Props) {
       try {
         const r = await window.fanpost.mpDraft(id, a);
         setId(r.id);
+        setBaseline(mpKey(a));
         setData(r.data);
         onSaved(r.id);
         Modal.success({ title: "已存进公众号草稿箱", content: MP_NOTES[0] });

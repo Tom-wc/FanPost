@@ -36,7 +36,8 @@ export function checkMpArticle(a: MpArticleInput): MpIssue[] {
   if (len(a.title) > r.titleMax) out.push({ level: "error", text: "标题超出 " + (len(a.title) - r.titleMax) + " 字（公众号上限 " + r.titleMax + " 字）" });
   if (len(a.author) > r.authorMax) out.push({ level: "error", text: "作者超出 " + (len(a.author) - r.authorMax) + " 字（上限 " + r.authorMax + " 字）" });
   if (len(a.digest) > r.digestMax) out.push({ level: "error", text: "摘要超出 " + (len(a.digest) - r.digestMax) + " 字（上限 " + r.digestMax + " 字）" });
-  if (!a.text.trim()) out.push({ level: "error", text: "正文不能为空" });
+  const hasBodyImage = a.images.length > 0 || /<img/i.test(a.html || "");
+  if (!a.text.trim() && !hasBodyImage) out.push({ level: "error", text: "正文不能为空" });
   if (len(a.text) > r.bodyCharsMax) out.push({ level: "error", text: "正文超出 " + (len(a.text) - r.bodyCharsMax) + " 字（上限 " + r.bodyCharsMax + " 字）" });
   if (!a.cover && !a.images.length && !/<img/i.test(a.html || "")) out.push({ level: "warn", text: "没有封面和图片，存草稿时会按标题自动生成一张封面" });
   if (a.images.length > r.imagesMax) out.push({ level: "error", text: "正文图片最多 " + r.imagesMax + " 张" });

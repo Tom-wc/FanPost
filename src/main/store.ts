@@ -43,6 +43,7 @@ const notificationKinds = new Set([
 ]);
 const platforms = new Set<string>(platformDefs.map((p) => p.id));
 const statuses = new Set(["logged_in", "logged_out"]);
+const failureBuckets = new Set(["login", "captcha", "not_found", "timeout", "unconfirmed", "quota", "network", "input", "other"]);
 const taskStatuses = new Set([
   "pending",
   "opening",
@@ -121,6 +122,8 @@ function parseAppData(value: unknown): AppData {
       accountIds,
       overrides: parseOverrides(draft.overrides),
       ...(draft.autoSubmit === true ? { autoSubmit: true } : {}),
+      ...(typeof draft.scheduledAt === "string" && draft.scheduledAt ? { scheduledAt: draft.scheduledAt } : {}),
+      ...(typeof draft.scheduleQueuedAt === "string" && draft.scheduleQueuedAt ? { scheduleQueuedAt: draft.scheduleQueuedAt } : {}),
       ...(draft.original === true ? { original: true } : {}),
       source: parseSource(draft.source),
       createdAt: isString(draft.createdAt)
@@ -151,6 +154,18 @@ function parseAppData(value: unknown): AppData {
       snapshotPath: isString(task.snapshotPath) ? task.snapshotPath : undefined,
       publishedUrl: isString(task.publishedUrl) && /^https?:\/\//i.test(task.publishedUrl) ? task.publishedUrl : undefined,
       openedAt: isString(task.openedAt) ? task.openedAt : undefined,
+      ...(isRecord(task.failure)
+        ? {
+            failure: {
+              bucket: (failureBuckets.has(String(task.failure.bucket)) ? task.failure.bucket : "other") as PublishTask["failure"] extends undefined ? never : NonNullable<PublishTask["failure"]>["bucket"],
+              reason: isString(task.failure.reason) ? task.failure.reason.slice(0, 80) : "其他原因",
+              detail: isString(task.failure.detail) ? task.failure.detail.slice(0, 600) : "",
+              at: isString(task.failure.at) ? task.failure.at : new Date(0).toISOString(),
+              retried: Number.isFinite(Number(task.failure.retried)) ? Math.max(0, Math.min(9, Number(task.failure.retried))) : 0,
+              ...(task.failure.gaveUp === true ? { gaveUp: true } : {}),
+            },
+          }
+        : {}),
       createdAt: isString(task.createdAt)
         ? task.createdAt
         : new Date(0).toISOString(),

@@ -1,13 +1,15 @@
 import { useRef, useState } from "react";
-import { Alert, Input, Select, Switch, Tag, Typography } from "antd";
+import { Alert, Button, Input, Select, Switch, Tag, Typography, message } from "antd";
 import type { InputRef } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
+import { UndoOutlined } from "@ant-design/icons";
 import { EmojiPicker } from "./EmojiPicker";
 import { TopicInput } from "./TopicInput";
 import type { ContentType, Platform, PlatformContent } from "../../shared/types";
 import { platformMap } from "../../shared/platforms";
 import { checkContent, isAssisted, platformRule, titleLength, type ContentIssue } from "../../shared/platform-rules";
 import { PlatformLogo } from "./PlatformLogo";
+import { AiAssist, MultiDraft } from "./AiPanel";
 import { BILIBILI_ZONES, DEFAULT_BILIBILI_ZONE } from "../../shared/declarations";
 
 export interface CommonContent {
@@ -40,6 +42,9 @@ export function ContentFields({
   bodyMax,
   issues = [],
   disabled,
+  platform,
+  platforms,
+  onPlatformDraft,
 }: {
   value: CommonContent;
   onChange: (next: CommonContent) => void;
@@ -51,6 +56,13 @@ export function ContentFields({
   bodyMax?: number;
   issues?: ContentIssue[];
   disabled?: boolean;
+  platform?: Platform;
+  platforms?: Platform[];
+  /**
+   * 一稿多平台：生成好的平台版本写到该平台的独立文案里。
+   * 只有「通用内容」这一层能提供，所以没传就不显示入口。
+   */
+  onPlatformDraft?: (platform: Platform, text: string) => void;
 }) {
   const len = titleLength(value.title);
   const bodyLen = titleLength(value.description);
@@ -61,6 +73,34 @@ export function ContentFields({
   const titleRef = useRef<InputRef>(null);
   const bodyRef = useRef<TextAreaRef>(null);
   const [focused, setFocused] = useState<"title" | "description">("description");
+  /**
+   * 正文里选中的区间。有值时 AI 只改这一段——现在改一句话不用重写全文。
+   * 用对象存而不是数字对，切换 tab / 重新挂载时自然归零。
+   */
+  const [range, setRange] = useState<{ start: number; end: number } | undefined>(undefined);
+  /**
+   * 上一次 AI 写到正文之前的原文。AI 面板一关就回不去，这个按钮是唯一退路；
+   * 用户手动改正文后作废，免得把人新写的东西盖掉。
+   */
+  const [undo, setUndo] = useState<string | undefined>(undefined);
+  const syncRange = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start === end) {
+      setRange((prev) => (prev ? undefined : prev));
+      return;
+    }
+    setRange((prev) => (prev && prev.start === start && prev.end === end ? prev : { start, end }));
+  };
+  const bodyEl = () => bodyRef.current?.resizableTextArea?.textArea ?? null;
+  const restore = () => {
+    if (undo === undefined) return;
+    onChange({ ...value, description: undo });
+    setUndo(undefined);
+    setRange(undefined);
+    message.success("已还原到 AI 修改之前");
+  };
   const field = hideTitle ? "description" : focused;
   const insertEmoji = (emoji: string) => {
     const el = field === "title" ? titleRef.current?.input : bodyRef.current?.resizableTextArea?.textArea;
@@ -77,6 +117,29 @@ export function ContentFields({
   return (
     <div className="content-fields">
       <div className="content-toolbar">
+        <AiAssist
+          value={value}
+          onChange={onChange}
+          type={type}
+          disabled={disabled}
+          hideTitle={hideTitle}
+          selection={range}
+          onApplied={(before) => {
+            setUndo(before);
+            setRange(undefined);
+          }}
+          {...(platform ? { platform } : {})}
+          {...(platforms ? { platforms } : {})}
+        >
+          {onPlatformDraft && platforms && platforms.length > 1 && (
+            <MultiDraft value={value.description} platforms={platforms} type={type} disabled={disabled} onAdopt={onPlatformDraft} />
+          )}
+        </AiAssist>
+        {undo !== undefined && (
+          <Button size="small" type="text" className="ai-undo" icon={<UndoOutlined />} title="回到这次 AI 修改之前的正文" onClick={restore}>
+            还原上一步
+          </Button>
+        )}
         <EmojiPicker onPick={insertEmoji} disabled={disabled} target={field === "title" ? "标题" : type === "video" ? "视频简介" : "正文"} />
       </div>
       {!hideTitle && (
@@ -112,13 +175,24 @@ export function ContentFields({
         </span>
         <Input.TextArea
           ref={bodyRef}
-          onFocus={() => setFocused("description")}
+          onFocus={() => {
+            setFocused("description");
+            syncRange(bodyEl());
+          }}
           value={value.description}
           disabled={disabled}
           status={bodyIssues.length ? "error" : undefined}
           autoSize={{ minRows: 6, maxRows: 16 }}
           placeholder={type === "video" ? "输入视频简介" : "输入正文，空行分段"}
-          onChange={(e) => onChange({ ...value, description: e.target.value })}
+          onChange={(e) => {
+            onChange({ ...value, description: e.target.value });
+            // 用户自己动手改了，之前那份原文就不再作数
+            setUndo(undefined);
+            syncRange(e.target as HTMLTextAreaElement);
+          }}
+          onSelect={(e) => syncRange(e.currentTarget)}
+          onMouseUp={(e) => syncRange(e.currentTarget)}
+          onKeyUp={(e) => syncRange(e.currentTarget)}
         />
         {bodyIssues.map((i) => (
           <small key={i.text} className="field-error">{i.text}</small>
@@ -199,6 +273,7 @@ export function PlatformTab({
         type={type}
         value={current}
         disabled={!own?.enabled}
+        platform={platform}
         hideTitle={rule.mergeTitleIntoBody}
         titleMax={rule.titleMax}
         titleMin={rule.titleMin}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { Button, Input, Modal, Popconfirm, Table, Tag, message } from "antd";
 import { DeleteOutlined, EditOutlined, ImportOutlined, PlusOutlined } from "@ant-design/icons";
 import type { AppData } from "../../shared/types";
@@ -6,11 +6,12 @@ import { BLANK_MP, type MpDraft } from "../../shared/mp-drafts";
 import { MpEditor } from "./MpEditor";
 import { PromoSlotView } from "./Promo";
 import { ensureLicensed, handleQuota } from "./LicensePanel";
+import type { LeaveGuard } from "./PublishComposer";
 
 const errText = (e: unknown) => String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(/^QUOTA:/, "");
 type Section = "edit" | "list";
 
-export function MpPage({ data, setData }: { data: AppData; setData: (d: AppData) => void }) {
+export function MpPage({ data, setData, guard, confirmLeave }: { data: AppData; setData: (d: AppData) => void; guard: RefObject<LeaveGuard | undefined>; confirmLeave: () => Promise<boolean> }) {
   const [section, setSection] = useState<Section>("edit");
   const [editing, setEditing] = useState<string>();
   const [key, setKey] = useState(0);
@@ -18,7 +19,9 @@ export function MpPage({ data, setData }: { data: AppData; setData: (d: AppData)
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState("");
   const draft = data.mpDrafts.find((d) => d.id === editing);
-  const open = (id?: string) => {
+  const leaveEditor = async () => section !== "edit" || (await confirmLeave());
+  const open = async (id?: string) => {
+    if (!(await leaveEditor())) return;
     setEditing(id);
     setKey((k) => k + 1);
     setSection("edit");
@@ -71,18 +74,18 @@ export function MpPage({ data, setData }: { data: AppData; setData: (d: AppData)
           <button role="tab" aria-selected={section === "edit"} className={section === "edit" ? "active" : ""} onClick={() => setSection("edit")}>
             {draft ? "编辑文章" : "新建文章"}
           </button>
-          <button role="tab" aria-selected={section === "list"} className={section === "list" ? "active" : ""} onClick={() => setSection("list")}>
+          <button role="tab" aria-selected={section === "list"} className={section === "list" ? "active" : ""} onClick={async () => { if (section !== "list" && (await leaveEditor())) setSection("list"); }}>
             文章列表{data.mpDrafts.length > 0 && <b className="num is-soft">{data.mpDrafts.length}</b>}
           </button>
         </div>
         {draft && section === "edit" && (
           <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => open(undefined)}>新建文章</Button>
         )}
-        <Button className="import-btn" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入文章 / 文档</Button>
+        <Button className="import-btn" icon={<ImportOutlined />} onClick={async () => { if (await leaveEditor()) setImportOpen(true); }}>导入文章 / 文档</Button>
       </div>
       <PromoSlotView slot="mp" variant="strip" />
       {section === "edit" ? (
-        <MpEditor key={key} initial={draft ?? BLANK_MP} draft={draft} setData={setData} onSaved={setEditing} />
+        <MpEditor key={key} initial={draft ?? BLANK_MP} draft={draft} setData={setData} onSaved={setEditing} guard={guard} />
       ) : (
         <section className="panel">
           <Table rowKey="id" dataSource={data.mpDrafts} columns={cols} pagination={{ pageSize: 20, hideOnSinglePage: true }} locale={{ emptyText: "还没有文章" }} />

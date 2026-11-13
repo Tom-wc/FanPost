@@ -33,3 +33,9 @@ test("公众号草稿读回时丢掉坏数据，更新保留已存公众号的�
   assert.equal(next[0].createdAt, "2026-11-01T00:00:00Z");
   assert.equal(next[0].title, "新");
 });
+
+test("只有图片的正文（PDF 逐页转图）不算空", () => {
+  const imageOnly = { ...BLANK_MP, title: "红头文件", text: "", html: '<p><img src="fpimg://local/a.png"></p>', images: ["a.png"] };
+  assert.equal(checkMpArticle(imageOnly).some((i) => i.text === "正文不能为空"), false);
+  assert.equal(checkMpArticle({ ...BLANK_MP, title: "空文章", text: "", html: "", images: [] }).some((i) => i.text === "正文不能为空"), true);
+});

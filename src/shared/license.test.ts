@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OFFLINE_GRACE_MS, REFRESH_INTERVAL_MS, canAddAccount, evaluateLicense, formatMachine, isPermanent, needsRefresh, normalizeCardKey, parsePayload, quotaOverflow, type LicensePayload } from "./license.ts";
+import { OFFLINE_GRACE_MS, REFRESH_INTERVAL_MS, canAddAccount, evaluateLicense, formatMachine, hasFeature, isPermanent, needsRefresh, normalizeCardKey, parsePayload, quotaOverflow, type LicensePayload } from "./license.ts";
 
 const NOW = Date.parse("2026-10-30T00:00:00Z");
 const day = 24 * 3600 * 1000;
@@ -11,11 +11,12 @@ const lic = (over: Partial<LicensePayload> = {}): LicensePayload => ({
   term: "year",
   expiresAt: new Date(NOW + 300 * day).toISOString(),
   issuedAt: new Date(NOW - day / 2).toISOString(),
+  features: [],
   ...over,
 });
 
 test("no license means no accounts can be used", () => {
-  assert.deepEqual(evaluateLicense(undefined, "M1", NOW), { tier: "none", limit: 0, reason: "none" });
+  assert.deepEqual(evaluateLicense(undefined, "M1", NOW), { tier: "none", limit: 0, reason: "none", features: [] });
 });
 
 test("valid license on the bound machine grants its tier", () => {
@@ -100,4 +101,17 @@ test("machine code and card keys are normalized for display and input", () => {
   assert.equal(formatMachine("a1b2c3d4e5f6a7b8c9d0"), "A1B2-C3D4-E5F6-A7B8");
   assert.equal(normalizeCardKey(" ab12-cd34 ef56gh78 "), "AB12-CD34-EF56-GH78");
   assert.equal(normalizeCardKey("short"), "");
+});
+
+test("扩展功能：老授权文件没有字段按未开通，未知值丢弃，授权失效时一并失效", () => {
+  const base = { keyId: "K1", machine: "M1", tier: "basic", term: "year", expiresAt: new Date(NOW + 300 * day).toISOString(), issuedAt: new Date(NOW).toISOString() };
+  assert.deepEqual(parsePayload(JSON.stringify(base))?.features, []);
+  assert.deepEqual(parsePayload(JSON.stringify({ ...base, features: ["mp-site", "x", 3, "mp-site"] }))?.features, ["mp-site"]);
+  assert.deepEqual(parsePayload(JSON.stringify({ ...base, features: "mp-site" }))?.features, []);
+  const on = evaluateLicense(lic({ features: ["mp-site"] }), "M1", NOW);
+  assert.equal(hasFeature(on, "mp-site"), true);
+  assert.equal(hasFeature(evaluateLicense(lic(), "M1", NOW), "mp-site"), false);
+  assert.equal(hasFeature(evaluateLicense(lic({ features: ["mp-site"] }), "M2", NOW), "mp-site"), false);
+  assert.equal(hasFeature(evaluateLicense(lic({ features: ["mp-site"], expiresAt: new Date(NOW - day).toISOString() }), "M1", NOW), "mp-site"), false);
+  assert.equal(hasFeature(evaluateLicense(lic({ features: ["mp-site"], issuedAt: new Date(NOW - 8 * day).toISOString() }), "M1", NOW), "mp-site"), false);
 });

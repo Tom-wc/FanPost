@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld("fanpost", {
   getLicense: () => ipcRenderer.invoke("license:get"),
   getSafetyRules: () => ipcRenderer.invoke("safety:rules"),
   grabUrl: (url: string) => ipcRenderer.invoke("grab:url", url),
+  extractMpStyle: (input: { url?: string; html?: string }) => ipcRenderer.invoke("mp:extract-style", input),
+  extractMpTemplate: (input: { url?: string; html?: string; site?: string; id?: string }) => ipcRenderer.invoke("mp:extract-template", input),
+  openMpSite: (site: string) => ipcRenderer.invoke("mp:open-site", site),
   grabAlbum: (url: string, filter: { keyword?: string; since?: string }) => ipcRenderer.invoke("grab:album", url, filter),
   grabBatch: (list: unknown[]) => ipcRenderer.invoke("grab:batch", list),
   importDoc: () => ipcRenderer.invoke("grab:doc"),
@@ -51,6 +54,12 @@ contextBridge.exposeInMainWorld("fanpost", {
     return () => ipcRenderer.removeListener("mp:progress", listener);
   },
   activateLicense: (key: string) => ipcRenderer.invoke("license:activate", key),
+  activateAddon: (key: string) => ipcRenderer.invoke("license:addon", key),
+  onLicenseChanged: (callback: (v: unknown) => void) => {
+    const listener = (_e: unknown, v: unknown) => callback(v);
+    ipcRenderer.on("license:changed", listener);
+    return () => ipcRenderer.removeListener("license:changed", listener);
+  },
   refreshLicense: () => ipcRenderer.invoke("license:refresh"),
   unbindLicense: () => ipcRenderer.invoke("license:unbind"),
   getAppInfo: (force?: boolean) => ipcRenderer.invoke("app:info", force === true),
@@ -87,6 +96,11 @@ contextBridge.exposeInMainWorld("fanpost", {
   createPublish: (d: Omit<PublishDraft, "id" | "createdAt">) =>
     ipcRenderer.invoke("publish:create", d),
   autoPublish: (draftId: string) => ipcRenderer.invoke("publish:auto", draftId),
+  setPublishSchedule: (draftId: string, at: string | null) => ipcRenderer.invoke("publish:schedule", draftId, at),
+  getUpcomingSchedules: () => ipcRenderer.invoke("publish:upcoming"),
+  getMissedSchedules: () => ipcRenderer.invoke("publish:missed"),
+  runScheduledNow: (draftId: string) => ipcRenderer.invoke("publish:run-now", draftId),
+  retryFailedTasks: (draftId: string) => ipcRenderer.invoke("publish:retry-failed", draftId),
   getPublishState: () => ipcRenderer.invoke("publish:state"),
   pausePublish: () => ipcRenderer.invoke("publish:pause"),
   resumePublish: () => ipcRenderer.invoke("publish:resume"),
@@ -130,5 +144,41 @@ contextBridge.exposeInMainWorld("fanpost", {
     const listener = () => callback();
     ipcRenderer.on("data:changed", listener);
     return () => ipcRenderer.removeListener("data:changed", listener);
+  },
+  getAiConfig: () => ipcRenderer.invoke("ai:config"),
+  saveAiConfig: (config: unknown) => ipcRenderer.invoke("ai:save", config),
+  testAi: (id: string) => ipcRenderer.invoke("ai:test", id),
+  probeAi: (draft: unknown) => ipcRenderer.invoke("ai:probe", draft),
+  listAiModels: (input: unknown) => ipcRenderer.invoke("ai:models", input),
+  runAi: (input: unknown) => ipcRenderer.invoke("ai:run", input),
+  cancelAi: (requestId: string) => ipcRenderer.invoke("ai:cancel", requestId),
+  onAiDelta: (callback: (p: { requestId: string; delta: string }) => void) => {
+    const listener = (_e: unknown, p: { requestId: string; delta: string }) => callback(p);
+    ipcRenderer.on("ai:delta", listener);
+    return () => ipcRenderer.removeListener("ai:delta", listener);
+  },
+  onAiDone: (callback: (p: { requestId: string; ok: boolean; text: string; error?: string; model?: string }) => void) => {
+    const listener = (_e: unknown, p: { requestId: string; ok: boolean; text: string; error?: string; model?: string }) => callback(p);
+    ipcRenderer.on("ai:done", listener);
+    return () => ipcRenderer.removeListener("ai:done", listener);
+  },
+  getLeads: () => ipcRenderer.invoke("leads:get"),
+  saveLeadsSettings: (settings: unknown) => ipcRenderer.invoke("leads:save-settings", settings),
+  scanLeads: (platforms: unknown) => ipcRenderer.invoke("leads:scan", platforms),
+  probeLeads: (input: unknown) => ipcRenderer.invoke("leads:probe", input),
+  replyLead: (input: unknown) => ipcRenderer.invoke("leads:reply", input),
+  replyAllLeads: (platforms: unknown) => ipcRenderer.invoke("leads:reply-all", platforms),
+  ignoreLead: (id: string) => ipcRenderer.invoke("leads:ignore", id),
+  ignoreLeads: (ids: string[]) => ipcRenderer.invoke("leads:ignore", ids),
+  clearLeads: (status: unknown) => ipcRenderer.invoke("leads:clear", status),
+  onLeadsChanged: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("leads:changed", listener);
+    return () => ipcRenderer.removeListener("leads:changed", listener);
+  },
+  onLeadsProgress: (callback: (p: { done: number; total: number; platform?: string; author?: string; finished?: boolean }) => void) => {
+    const listener = (_e: unknown, p: { done: number; total: number; platform?: string; author?: string; finished?: boolean }) => callback(p);
+    ipcRenderer.on("leads:progress", listener);
+    return () => ipcRenderer.removeListener("leads:progress", listener);
   }
 });

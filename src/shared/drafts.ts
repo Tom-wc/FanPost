@@ -30,6 +30,7 @@ function parseOverrides(value: unknown): Partial<Record<Platform, DraftOverride>
       ...(isString(raw.title) ? { title: raw.title } : {}),
       ...(isString(raw.description) ? { description: raw.description } : {}),
       ...(Array.isArray(raw.topics) ? { topics: strings(raw.topics) } : {}),
+      ...(isString(raw.coverPath) && raw.coverPath ? { coverPath: raw.coverPath } : {}),
       ...(isString(raw.question) && raw.question.trim() ? { question: raw.question } : {}),
       ...(isString(raw.zone) && raw.zone.trim() ? { zone: raw.zone } : {}),
     };
@@ -51,6 +52,7 @@ export function parseDraftInput(value: unknown): DraftInput | undefined {
     ...(isDeclaration(value.declaration) ? { declaration: value.declaration } : {}),
     ...(value.original === true ? { original: true } : {}),
     ...(parseSource(value.source) ? { source: parseSource(value.source) } : {}),
+    ...(typeof value.scheduledAt === "string" && value.scheduledAt && !Number.isNaN(Date.parse(value.scheduledAt)) ? { scheduledAt: value.scheduledAt } : {}),
   };
 }
 

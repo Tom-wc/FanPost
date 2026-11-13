@@ -8,6 +8,7 @@ import { TaskCard } from "./TaskPreview";
 import { accountWho } from "../../shared/accounts";
 import type { Platform } from "../../shared/types";
 import { countBuckets, groupByReason, taskBucket } from "../../shared/task-outcome";
+import { BUCKET_LABEL, RETRY_MAX, isRetryable } from "../../shared/failure";
 
 const DONE = ["success", "failed", "dismissed"];
 const RECORDS_PAGE_SIZE = 8;
@@ -209,8 +210,36 @@ export function PublishRecords({
       message.error("打开失败：" + (error instanceof Error ? error.message : String(error)));
     }
   };
+  const failureOf = (t: PublishTask) =>
+    t.failure ? (
+      <div className="task-fail">
+        <b>
+          失败原因：{t.failure.reason}
+          {t.failure.retried > 0 ? "（已自动重试 " + t.failure.retried + " 次）" : ""}
+        </b>
+        <small>{t.failure.detail || t.message}</small>
+      </div>
+    ) : t.status === "failed" ? (
+      <div className="task-fail">
+        <b>失败原因：其他</b>
+        <small>{t.message}</small>
+      </div>
+    ) : null;
+  const failedHere = detail ? tasksFor(detail.id).filter((t) => t.status === "failed") : [];
+  const retryableHere = failedHere.filter((t) => isRetryable(t)).length;
+  const retryAll = async () => {
+    if (!detail) return;
+    try {
+      const r = await window.fanpost.retryFailedTasks(detail.id);
+      message.success(r.retried ? "已重新排队 " + r.retried + " 条，马上开始" : "没有还能再试的（已经重试过一次或需要你处理）");
+    } catch (error) {
+      message.error("重试失败：" + (error instanceof Error ? error.message : String(error)));
+    }
+  };
   const taskActions = (t: PublishTask) => (
-    <Space wrap size={6}>
+    <Space wrap size={6} direction="vertical">
+      {failureOf(t)}
+      <Space wrap size={6}>
       {t.status !== "success" && (
         <Button size="small" type="primary" onClick={() => openTask(t)}>
           {t.status === "failed" ? "打开发布页看原因" : t.status === "dismissed" ? "重新打开发布页" : t.openedAt ? "再打开（已打开过）" : "打开发布页"}
@@ -241,6 +270,12 @@ export function PublishRecords({
           标记失败
         </Button>
       )}
+      {t.status === "failed" && isRetryable(t) && (
+        <Button size="small" onClick={() => void retryAll()}>
+          再试一次
+        </Button>
+      )}
+      </Space>
     </Space>
   );
   return (
@@ -288,6 +323,20 @@ export function PublishRecords({
         onRow={(d) => ({ onDoubleClick: () => setDetail(d) })}
       />
       <Modal title={detail?.title} width={1120} open={!!detail} footer={null} onCancel={() => setDetail(undefined)} className="detail-modal">
+        {detail && failedHere.length > 0 && (
+          <div className="fail-summary">
+            <span className="grow">
+              <b>这批有 {failedHere.length} 条失败</b>
+              <div className="muted" style={{ marginTop: 4 }}>
+                {groupByReason(failedHere, (p) => platformMap[p].name).join("；")}
+              </div>
+            </span>
+            <Button type="primary" size="small" disabled={!retryableHere} onClick={() => void retryAll()}>
+              重试失败的（{retryableHere}）
+            </Button>
+            <span className="muted">每条最多自动重试 {RETRY_MAX} 次</span>
+          </div>
+        )}
         {detail && (
           <Space wrap className="bulk-open">
             <Button

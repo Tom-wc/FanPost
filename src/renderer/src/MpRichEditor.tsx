@@ -17,6 +17,7 @@ import {
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { imageTag } from "../../shared/mp-html";
+import { MpTypeset } from "./MpTypeset";
 
 interface Props {
   html: string;
@@ -136,6 +137,8 @@ export function MpRichEditor({ html, onChange }: Props) {
         <input type="color" aria-label="文字颜色" title="文字颜色" onChange={(e) => run(["foreColor", e.target.value])} />
         <Divider type="vertical" />
         <Button size="small" icon={<PictureOutlined />} onClick={() => void insertImages()}>在光标处插图</Button>
+        <Divider type="vertical" />
+        <MpTypeset html={html} onApply={(next) => onChange(next)} />
         <span className="mp-rich-count muted">正文图 {counts.body} · 预览图 {counts.preview}</span>
       </div>
       {picked && (

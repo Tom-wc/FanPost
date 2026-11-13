@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
-import { Alert, Badge, Button, Checkbox, Empty, Image, Modal, Select, Space, Switch, Tabs, Tag, message } from "antd";
-import { DownOutlined, SaveOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { Alert, Badge, Button, Checkbox, DatePicker, Empty, Image, InputNumber, Modal, Popover, Select, Space, Switch, Tabs, Tag, message } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
+import { ClockCircleOutlined, DownOutlined, SaveOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { AppData, ContentOverrides, ContentType, Platform, SavedDraft } from "../../shared/types";
 import { BLANK_SNAPSHOT, snapshotKey, type ComposerSnapshot, type DraftInput } from "../../shared/drafts";
 import { platformMap } from "../../shared/platforms";
@@ -15,6 +16,7 @@ import { ContentFields, PlatformTab, RuleStrip, effective, type CommonContent, t
 import { RULES_MISSING, reviewSafety } from "../../shared/safety-review";
 import { useSafetyRules, safetyReason } from "./safety";
 import { HelpLink } from "./Tutorial";
+import { SCHEDULE_HINT } from "../../shared/schedule";
 
 const COVER_TIMEOUT_MS = 20000;
 const blankContent: CommonContent = { title: "", description: "", topics: [] };
@@ -59,6 +61,8 @@ export function PublishComposer({
   initial,
   guard,
   onSaved,
+  scheduleApi,
+  onScheduledAt,
 }: {
   type: ContentType;
   data: AppData;
@@ -67,6 +71,9 @@ export function PublishComposer({
   initial?: SavedDraft;
   guard: RefObject<LeaveGuard | undefined>;
   onSaved: (draft: SavedDraft) => void;
+  /** 顶栏「定时发布」按钮借用这里的状态和动作 */
+  scheduleApi?: RefObject<{ open: () => void; cancel: () => void } | undefined>;
+  onScheduledAt?: (at: string | undefined) => void;
 }) {
   const isVideo = type === "video";
   const [media, setMedia] = useState<string[]>(initial?.mediaPaths ?? []),
@@ -83,7 +90,11 @@ export function PublishComposer({
     [submitting, setSubmitting] = useState(false),
     [draftId, setDraftId] = useState(initial?.id),
     [baseline, setBaseline] = useState(() => snapshotKey(initial ? snapshotOf(initial) : BLANK_SNAPSHOT)),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [scheduledAt, setScheduledAt] = useState<string | undefined>(initial?.scheduledAt),
+    [scheduled, setScheduled] = useState<{ id: string; at: string } | undefined>(undefined),
+    [pickOpen, setPickOpen] = useState(false),
+    [draftTime, setDraftTime] = useState<Dayjs | null>(null);
   const usable = useMemo(() => data.accounts.filter((a) => supportsType(a.platform, type)), [data.accounts, type]);
   const unsupported = useMemo(
     () => Array.from(new Set(data.accounts.filter((a) => !supportsType(a.platform, type)).map((a) => a.platform))),
@@ -321,6 +332,65 @@ export function PublishComposer({
       onOk: () => void launch(true),
     });
   }
+  useEffect(() => {
+    onScheduledAt?.(scheduledAt);
+  }, [scheduledAt]);
+  useEffect(() => {
+    if (!scheduleApi) return;
+    scheduleApi.current = { open: () => setPickOpen(true), cancel: () => void scheduleAt(null) };
+    return () => {
+      scheduleApi.current = undefined;
+    };
+  });
+
+  async function scheduleAt(at: string | null) {
+    if (!media.length) return message.error(isVideo ? "请先添加视频" : "请先添加图片");
+    if (!common.title.trim()) {
+      setTab("common");
+      return message.error("请填写通用标题");
+    }
+    if (!accountIds.length) return message.error("请至少选择一个账号");
+    try {
+      setSubmitting(true);
+      if (!at) {
+        if (scheduled?.id) await window.fanpost.removeHistory([scheduled.id]);
+        setScheduled(undefined);
+        setScheduledAt(undefined);
+        message.success("已取消定时");
+        return;
+      }
+      const created = await window.fanpost.createPublish({
+        type,
+        title: common.title.trim(),
+        description: common.description,
+        topics: common.topics,
+        mediaPaths: media,
+        coverPath: cover,
+        accountIds,
+        overrides: buildOverrides(),
+        declaration,
+        autoSubmit: true,
+        ...(original ? { original: true } : {}),
+        ...(source ? { source } : {}),
+      });
+      const pid = created.drafts[0].id;
+      if (scheduled?.id && scheduled.id !== pid) await window.fanpost.removeHistory([scheduled.id]).catch(() => undefined);
+      setData(draftId ? await window.fanpost.removeDraft(draftId).catch(() => created) : created);
+      const r = await window.fanpost.setPublishSchedule(pid, at);
+      setData(r);
+      setScheduled({ id: pid, at });
+      setScheduledAt(at);
+      setBaseline(currentKey);
+      message.success("已排进定时队列：" + dayjs(at).format("MM-DD HH:mm") + " 开始自动填写并发布", 5);
+      onStarted();
+    } catch (error) {
+      if (!handleQuota(error)) message.error(safetyReason(error) || "设定时失败：" + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setSubmitting(false);
+      setPickOpen(false);
+    }
+  }
+
   async function launch(auto: boolean) {
     try {
       setSubmitting(true);
@@ -357,7 +427,25 @@ export function PublishComposer({
       key: "common",
       label: "通用内容",
       children: (
-        <ContentFields type={type} value={common} onChange={setCommon} topicOptions={topicOptions} />
+        <ContentFields
+          type={type}
+          value={common}
+          onChange={setCommon}
+          topicOptions={topicOptions}
+          platforms={selectedPlatforms}
+          onPlatformDraft={(p, text) =>
+            setOverrides((o) => ({
+              ...o,
+              [p]: {
+                ...(o[p] || {}),
+                enabled: true,
+                title: o[p]?.title ?? common.title,
+                description: text,
+                topics: o[p]?.topics ?? common.topics,
+              },
+            }))
+          }
+        />
       ),
     },
     ...selectedPlatforms.map((p) => {
@@ -608,6 +696,60 @@ export function PublishComposer({
           </div>
         </section>
       </aside>
+
+      <Modal
+        open={pickOpen}
+        title="定时发布"
+        okText="保存"
+        cancelText="取消"
+        onCancel={() => setPickOpen(false)}
+        onOk={() => {
+          if (!draftTime) return message.warning("先选一个时间");
+          if (draftTime.valueOf() < Date.now() + 60000) return message.warning("时间要晚于现在 1 分钟以上");
+          void scheduleAt(draftTime.toISOString());
+        }}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          <DatePicker
+            showTime={{ format: "HH:mm" }}
+            format="YYYY-MM-DD HH:mm"
+            value={draftTime}
+            onChange={(v) => setDraftTime(v)}
+            placeholder="选日期和时间"
+            style={{ width: "100%" }}
+            disabledDate={(d) => d && d.startOf("day").valueOf() < dayjs().startOf("day").valueOf()}
+          />
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+            {[
+              ["10 分钟后", 10],
+              ["1 小时后", 60],
+              ["今晚 8 点", -1],
+              ["明早 9 点", -2],
+            ].map(([label, hint]) => (
+              <Button
+                key={label as string}
+                size="small"
+                onClick={() => {
+                  if (hint === -1) {
+                    const t = dayjs().hour(20).minute(0).second(0);
+                    setDraftTime(t.valueOf() < Date.now() ? t.add(1, "day") : t);
+                  } else if (hint === -2) {
+                    setDraftTime(dayjs().add(1, "day").hour(9).minute(0).second(0));
+                  } else setDraftTime(dayjs().add(Number(hint), "minute"));
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <Alert
+            type="warning"
+            showIcon
+            title="到点软件必须开着、电脑不能睡眠"
+            description={<span style={{ whiteSpace: "pre-line" }}>{SCHEDULE_HINT}</span>}
+          />
+        </Space>
+      </Modal>
     </div>
   );
 }

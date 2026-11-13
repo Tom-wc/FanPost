@@ -18,6 +18,7 @@ import {
   ReloadOutlined,
   UploadOutlined,
   WechatOutlined,
+  CommentOutlined,
 } from "@ant-design/icons";
 import type { Account, AppData, ContentType, Platform, PublishTask, SavedDraft } from "../../shared/types";
 import { platformMap, platforms } from "../../shared/platforms";
@@ -25,6 +26,9 @@ import { PlatformLogo } from "./PlatformLogo";
 import { PublishComposer, type LeaveGuard } from "./PublishComposer";
 import { DraftList } from "./DraftList";
 import { useLeaveConfirm } from "./LeaveConfirm";
+import { MissedSchedules } from "./MissedSchedules";
+import dayjs from "dayjs";
+import { ClockCircleOutlined } from "@ant-design/icons";
 import { draftLabel } from "../../shared/drafts";
 import { PublishRecords } from "./PublishRecords";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -37,6 +41,7 @@ import { StatButton, StatPanel, type StatKind } from "./StatPanel";
 import { BatchControl } from "./BatchControl";
 import { ImportModal } from "./ImportModal";
 import { MpPage } from "./MpPage";
+import { LeadsPage } from "./LeadsPage";
 import { AboutPage } from "./AboutPage";
 import { NoticeBar, PromoSlotView, useAppInfo } from "./Promo";
 import { HelpLink, TutorialHost } from "./Tutorial";
@@ -44,7 +49,7 @@ import type { TutorialTopic } from "../../shared/tutorial";
 import { THEMES, antTheme, applyCssVars, findTheme, loadThemeId, saveThemeId, type ThemeId } from "./theme";
 const brandUrl = new URL("./assets/brand.png", import.meta.url).href;
 
-type Page = "accounts" | "image" | "video" | "mp" | "settings" | "about";
+type Page = "accounts" | "image" | "video" | "mp" | "leads" | "settings" | "about";
 const STATS: Array<{ kind: StatKind; label: string; tone: (n: number) => "ok" | "warn" | "bad" | undefined }> = [
   { kind: "online", label: "在线账号", tone: () => "ok" },
   { kind: "offline", label: "已掉线", tone: (n) => (n ? "bad" : undefined) },
@@ -59,13 +64,15 @@ const NAV: Array<{ key: Page; label: string; icon: React.ReactNode }> = [
   { key: "image", label: "图文", icon: <PictureOutlined /> },
   { key: "video", label: "视频", icon: <PlaySquareOutlined /> },
   { key: "mp", label: "公众号", icon: <WechatOutlined /> },
+  { key: "leads", label: "评论", icon: <CommentOutlined /> },
 ];
-const PAGE_HELP: Record<Page, TutorialTopic> = { accounts: "accounts", image: "compose", video: "compose", mp: "mp", settings: "settings", about: "start" };
+const PAGE_HELP: Record<Page, TutorialTopic> = { accounts: "accounts", image: "compose", video: "compose", mp: "mp", leads: "leads", settings: "settings", about: "start" };
 const PAGE_TITLE: Record<Page, { eyebrow: string; title: string }> = {
   accounts: { eyebrow: "ACCOUNTS", title: "账号工作台" },
   image: { eyebrow: "IMAGE · TEXT", title: "图文一键分发" },
   video: { eyebrow: "VIDEO", title: "视频一键分发" },
   mp: { eyebrow: "OFFICIAL ACCOUNT", title: "公众号文章" },
+  leads: { eyebrow: "COMMENTS", title: "评论 · 私信工作台" },
   settings: { eyebrow: "SETTINGS", title: "设置" },
   about: { eyebrow: "ABOUT", title: "关于与免责" },
 };
@@ -389,10 +396,14 @@ function Main({ themeId, setThemeId }: { themeId: ThemeId; setThemeId: (id: Them
             </div>
           ) : page === "mp" ? (
             <ErrorBoundary>
-              <MpPage data={data} setData={setData} />
+              <MpPage data={data} setData={setData} guard={guard} confirmLeave={leave.confirm} />
+            </ErrorBoundary>
+          ) : page === "leads" ? (
+            <ErrorBoundary>
+              <LeadsPage accounts={data.accounts} onGoAccounts={() => void go("accounts")} />
             </ErrorBoundary>
           ) : page === "settings" ? (
-            <SettingsPage data={data} setData={setData} guard={guard} />
+            <SettingsPage data={data} setData={setData} guard={guard} onGoLead={() => void go("leads")} />
           ) : page === "about" ? (
             <AboutPage />
           ) : (
@@ -405,6 +416,7 @@ function Main({ themeId, setThemeId }: { themeId: ThemeId; setThemeId: (id: Them
       <UpgradeModal />
       <TutorialHost onOverlay={overlay("tutorial")} />
       {leave.modal}
+      <MissedSchedules />
       <NotificationCenter open={notifyOpen} onClose={() => setNotifyOpen(false)} data={data} setData={setData} onShowAccount={showAccount} onOpenTask={openTask} onOpenTasks={openTasks} />
       <Modal
         title="添加账号"
@@ -455,7 +467,9 @@ function Publish({
   const [section, setSectionState] = useState<Section>(() => lastSection[type] || "compose"),
     [editing, setEditing] = useState<SavedDraft>(),
     [composerKey, setComposerKey] = useState(0),
-    [importOpen, setImportOpen] = useState(false);
+    [importOpen, setImportOpen] = useState(false),
+    [scheduledAt, setScheduledAt] = useState<string | undefined>(undefined);
+  const scheduleApi = useRef<{ open: () => void; cancel: () => void } | undefined>(undefined);
   const pending = data.tasks.filter((t) => t.status === "manual_required" && data.drafts.find((d) => d.id === t.draftId)?.type === type).length;
   const draftCount = data.savedDrafts.filter((d) => d.type === type).length;
   const kind = type === "video" ? "视频" : "图文";
@@ -501,11 +515,34 @@ function Publish({
             </Button>
           </span>
         )}
-        {type === "image_text" && (
-          <Button className="import-btn" icon={<ImportOutlined />} onClick={async () => { if (section !== "compose" || (await confirmLeave())) setImportOpen(true); }}>
-            导入图文
-          </Button>
-        )}
+        <div className="bar-acts">
+          {type === "image_text" && (
+            <Button className="import-btn" icon={<ImportOutlined />} onClick={async () => { if (section !== "compose" || (await confirmLeave())) setImportOpen(true); }}>
+              导入图文
+            </Button>
+          )}
+          {section === "compose" && (
+            <>
+              {scheduledAt && (
+                <Button size="small" type="text" onClick={() => scheduleApi.current?.cancel()}>
+                  取消定时
+                </Button>
+              )}
+              <Button
+                className="import-btn"
+                icon={<ClockCircleOutlined />}
+                type={scheduledAt ? "default" : "primary"}
+                ghost={!scheduledAt}
+                onClick={() => {
+                  if (!scheduleApi.current) return;
+                  scheduleApi.current.open();
+                }}
+              >
+                {scheduledAt ? "已定时 " + dayjs(scheduledAt).format("MM-DD HH:mm") : "定时发布"}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} setData={setData} onOpenDraft={edit} onBatchDone={() => setSection("drafts")} />
       {section === "compose" ? (
@@ -516,6 +553,8 @@ function Publish({
           setData={setData}
           initial={editing}
           guard={guard}
+          scheduleApi={scheduleApi}
+          onScheduledAt={setScheduledAt}
           onSaved={setEditing}
           onStarted={() => {
             setEditing(undefined);

@@ -1,4 +1,4 @@
-export type TutorialTopic = "start" | "accounts" | "compose" | "pick" | "launch" | "records" | "drafts" | "notify" | "settings" | "mp" | "license" | "safety" | "lookup" | "verify" | "faq";
+export type TutorialTopic = "start" | "accounts" | "compose" | "pick" | "launch" | "records" | "drafts" | "notify" | "settings" | "mp" | "leads" | "license" | "safety" | "lookup" | "verify" | "faq";
 
 export const TUTORIAL_SECTIONS: Record<TutorialTopic, string> = {
   start: "5 分钟上手：发一篇图文到 4 个平台",
@@ -11,6 +11,7 @@ export const TUTORIAL_SECTIONS: Record<TutorialTopic, string> = {
   notify: "操作 7：处理通知和掉线账号",
   settings: "操作 8：调整设置",
   mp: "操作 9：公众号文章",
+  leads: "操作 10：评论 · 私信工作台",
   license: "会员到期与授权提醒",
   safety: "安全检查：敏感词、每日次数、照搬比例",
   lookup: "在哪里查看：常用信息速查",

@@ -10,6 +10,12 @@ export const YEAR_PRICES: Record<Exclude<LicenseTier, "none">, number> = { basic
 export type LicenseTerm = "forever" | "year" | "trial";
 export const PERMANENT_YEAR = 9999;
 
+export type LicenseFeature = "mp-site";
+export const FEATURES: LicenseFeature[] = ["mp-site"];
+export const FEATURE_MP_SITE: LicenseFeature = "mp-site";
+export const FEATURE_LABELS: Record<LicenseFeature, string> = { "mp-site": "模板站采集" };
+export const FEATURE_ERROR = "FEATURE:";
+
 export const isPermanent = (expiresAt: string | undefined) => !!expiresAt && new Date(expiresAt).getUTCFullYear() >= PERMANENT_YEAR;
 
 export const REFRESH_INTERVAL_MS = 24 * 3600 * 1000;
@@ -22,6 +28,7 @@ export interface LicensePayload {
   term: LicenseTerm;
   expiresAt: string;
   issuedAt: string;
+  features: LicenseFeature[];
 }
 
 export interface LicenseState {
@@ -32,9 +39,13 @@ export interface LicenseState {
   expiresAt?: string;
   issuedAt?: string;
   reason?: "none" | "expired" | "machine" | "stale" | "invalid";
+  features: LicenseFeature[];
 }
 
 const isTier = (v: unknown): v is Exclude<LicenseTier, "none"> => v === "basic" || v === "studio";
+const isFeature = (v: unknown): v is LicenseFeature => FEATURES.includes(v as LicenseFeature);
+const featuresOf = (v: unknown): LicenseFeature[] => (Array.isArray(v) ? [...new Set(v.filter(isFeature))] : []);
+
 const isTerm = (v: unknown): v is LicenseTerm => v === "forever" || v === "year" || v === "trial";
 
 export function parsePayload(text: string): LicensePayload | undefined {
@@ -44,13 +55,13 @@ export function parsePayload(text: string): LicensePayload | undefined {
     if (typeof p.expiresAt !== "string" || typeof p.issuedAt !== "string") return undefined;
     if (Number.isNaN(Date.parse(p.expiresAt)) || Number.isNaN(Date.parse(p.issuedAt))) return undefined;
     const term = isTerm(p.term) ? p.term : isPermanent(p.expiresAt) ? "forever" : "trial";
-    return { keyId: p.keyId, machine: p.machine, tier: p.tier, term, expiresAt: p.expiresAt, issuedAt: p.issuedAt };
+    return { keyId: p.keyId, machine: p.machine, tier: p.tier, term, expiresAt: p.expiresAt, issuedAt: p.issuedAt, features: featuresOf(p.features) };
   } catch {
     return undefined;
   }
 }
 
-export const NO_LICENSE: LicenseState = { tier: "none", limit: TIER_LIMITS.none, reason: "none" };
+export const NO_LICENSE: LicenseState = { tier: "none", limit: TIER_LIMITS.none, reason: "none", features: [] };
 
 export function evaluateLicense(payload: LicensePayload | undefined, machine: string, now: number): LicenseState {
   if (!payload) return NO_LICENSE;
@@ -58,8 +69,10 @@ export function evaluateLicense(payload: LicensePayload | undefined, machine: st
   if (payload.machine !== machine) return { ...NO_LICENSE, ...base, reason: "machine" };
   if (Date.parse(payload.expiresAt) <= now) return { ...NO_LICENSE, ...base, reason: "expired" };
   if (now - Date.parse(payload.issuedAt) > OFFLINE_GRACE_MS) return { ...NO_LICENSE, ...base, reason: "stale" };
-  return { tier: payload.tier, limit: TIER_LIMITS[payload.tier], ...base };
+  return { tier: payload.tier, limit: TIER_LIMITS[payload.tier], ...base, features: payload.features };
 }
+
+export const hasFeature = (state: Pick<LicenseState, "tier" | "features">, feature: LicenseFeature) => state.tier !== "none" && state.features.includes(feature);
 
 export interface QuotaOverflow {
   platform: Platform;
